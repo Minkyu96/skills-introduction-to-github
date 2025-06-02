@@ -11,15 +11,15 @@ import spacy
 from flask import Flask, render_template, request, jsonify
 from pyngrok import conf, ngrok
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 1) ngrok 설정
-# ─────────────────────────────────────────────────────────────────────────────
+
+# 1) ngrok 설정 무료 임시 사이트 개설 프로그램 
+
 conf.get_default().ngrok_path = r"C:\Users\user\PycharmProjects\PythonProject7\ngrok.exe"
 conf.get_default().auth_token = "2xi76Rsj0Qq7OynIy3atEmAApxb_6AE55zQ7AydPEwnREuegd"
 
-# ─────────────────────────────────────────────────────────────────────────────
+
 # 2) 응답 매핑 테이블 정의
-# ─────────────────────────────────────────────────────────────────────────────
+# 차후 자연어 생성 처리할 예정!!
 response_map = {
     # ===== 항공 =====
     ("항공", "수하물",   "조회"): "항공권 수하물 정보 페이지로 이동",
@@ -45,12 +45,12 @@ response_map = {
     ("호텔", "일정",     "예약"): "호텔 예약 페이지로 이동",
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
+
 # 3) spaCy 한국어 모델 + EntityRuler 설정 (도시 / 날짜 / 시간 추출)
-# ─────────────────────────────────────────────────────────────────────────────
+
 nlp = spacy.load("ko_core_news_sm")
 
-# 커스텀 패턴: “14시” 같은 TIME, “2025-06-02” 같은 DATE
+# 시간 패턴
 patterns = [
     {"label": "TIME", "pattern": [{"TEXT": {"REGEX": r"\d{1,2}시"}}]},
     {"label": "DATE", "pattern": [{"TEXT": {"REGEX": r"\d{4}-\d{1,2}-\d{1,2}"}}]}
@@ -58,9 +58,9 @@ patterns = [
 ruler = nlp.add_pipe("entity_ruler", before="ner")
 ruler.add_patterns(patterns)
 
-# ─────────────────────────────────────────────────────────────────────────────
+# 인원 패턴
 # 4) 한글 숫자 → 정수 변환 함수 (인원 수 계산에 사용)
-# ─────────────────────────────────────────────────────────────────────────────
+
 def korean_to_int(kor_word: str) -> int:
     units = {
         '한': 1, '두': 2, '세': 3, '네': 4, '다섯': 5,
@@ -71,7 +71,7 @@ def korean_to_int(kor_word: str) -> int:
         '예순': 60, '일흔': 70, '여든': 80, '아흔': 90
     }
 
-    # “스물두” 처럼 접두사(열, 스물, 서른 …) + 단위(한, 두, 세 …)
+  
     for t_word, t_val in tens.items():
         if kor_word.startswith(t_word):
             total = t_val
@@ -80,7 +80,7 @@ def korean_to_int(kor_word: str) -> int:
                 total += units.get(remainder, 0)
             return total
 
-    # 단독으로 “한”, “두”, …, “열”
+  
     return units.get(kor_word, 0)
 
 def count_people(text: str) -> int:
@@ -109,9 +109,9 @@ def count_people(text: str) -> int:
 
     return total
 
-# ─────────────────────────────────────────────────────────────────────────────
+
 # 5) TriHead 모델 정의 + 토크나이저 & 학습된 가중치 로드
-# ─────────────────────────────────────────────────────────────────────────────
+# 학습 모델 로딩하는 부분
 DEVICE   = "cuda" if torch.cuda.is_available() else "cpu"
 LOAD_DIR = r"C:\Users\user\Desktop\model_greeting"
 
@@ -183,26 +183,20 @@ def predict_with_confidence(sentence: str) -> dict:
 TRUTH_THRESHOLD = 0.98
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 6) Flask 애플리케이션 정의
+# 6) Flask 정의 웹사이트 만드는 라이브러리 
 # ─────────────────────────────────────────────────────────────────────────────
 app = Flask(__name__, template_folder="templates", static_folder="static")
 
 
 @app.route('/')
 def home():
-    """
-    index.html을 렌더링합니다.
-    (templates/index.html 내부에 간단한 채팅 UI를 구현해야 합니다.)
-    """
+    
     return render_template('index.html')
 
 
 @app.route('/chat', methods=['POST'])
 def chat():
-    """
-    클라이언트에서 JSON { "message": "<유저 입력>" } 형태로 요청을 보내면,
-    모델 예측 → 신뢰도 체크 → 분기 로직 → reply 생성 → JSON으로 반환합니다.
-    """
+   
 
     data = request.get_json()
     user_msg = data.get('message', '').strip()
@@ -225,7 +219,7 @@ def chat():
             reply           = "❓ 죄송합니다. 입력하신 문장을 이해하지 못했습니다. 다시 입력해 주세요."
         )
 
-    # 3) “인사” 액션 처리
+    # 3) 인사 액션 처리
     if act == "인사":
         return jsonify(
             user            = user_msg,
@@ -235,7 +229,7 @@ def chat():
             reply           = "넹 안녕하세요! 어떻게 도와드릴까요?"
         )
 
-    # 4) 도메인 Unknown & 카테고리 일정 & 액션 예약 → “항공/호텔 선택 요청”
+    # 4) 일정과 예약이 예측되었으나 도메인을 입력 받지 못했을 때
     if dom == "Unknown" and cat == "일정" and act == "예약":
         return jsonify(
             user            = user_msg,
